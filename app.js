@@ -142,6 +142,7 @@ function updateBladeGeometry() {
     
     bladeMesh = new THREE.Mesh(geometry, material);
     bladeMesh.rotation.x = -Math.PI / 2; 
+    bladeMesh.position.y = span / 2;
     
     scene.add(bladeMesh);
 }
