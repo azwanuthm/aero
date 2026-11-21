@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// Import modul Exporter STL
+import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
@@ -27,25 +29,19 @@ scene.add(dirLight);
 const gridHelper = new THREE.GridHelper(400, 40, 0x888888, 0xdddddd);
 scene.add(gridHelper);
 
-// --- Pemboleh Ubah Global Untuk Data Luaran ---
 let customAirfoilPoints = null;
 
-// --- 3.1 Fungsi Pembaca Fail Data Luaran ---
 function parseDatFile(content) {
     const lines = content.split('\n');
     const points = [];
-    
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (!line || line.match(/^[a-zA-Z]/)) continue; // Abaikan baris kosong atau tajuk huruf
-        
-        const parts = line.split(/\s+/); // Pisahkan nombor menggunakan ruang putih
+        if (!line || line.match(/^[a-zA-Z]/)) continue; 
+        const parts = line.split(/\s+/); 
         if (parts.length >= 2) {
             const x = parseFloat(parts[0]);
             const y = parseFloat(parts[1]);
-            if (!isNaN(x) && !isNaN(y)) {
-                points.push(new THREE.Vector2(x, y));
-            }
+            if (!isNaN(x) && !isNaN(y)) points.push(new THREE.Vector2(x, y));
         }
     }
     return points;
@@ -54,17 +50,12 @@ function parseDatFile(content) {
 function generateCustomShape(chord, pointsArray) {
     const shape = new THREE.Shape();
     if (pointsArray.length === 0) return shape;
-    
     shape.moveTo(pointsArray[0].x * chord, pointsArray[0].y * chord);
-    for (let i = 1; i < pointsArray.length; i++) {
-        shape.lineTo(pointsArray[i].x * chord, pointsArray[i].y * chord);
-    }
-    // Tutup profil geometri
+    for (let i = 1; i < pointsArray.length; i++) shape.lineTo(pointsArray[i].x * chord, pointsArray[i].y * chord);
     shape.lineTo(pointsArray[0].x * chord, pointsArray[0].y * chord);
     return shape;
 }
 
-// --- 3.2 Logik Matematik NACA 4-Digit PENUH ---
 function generateNACAShape(chord, nacaCode, numPoints = 80) {
     const shape = new THREE.Shape();
     const m = parseInt(nacaCode.charAt(0)) / 100;
@@ -106,7 +97,6 @@ function generateNACAShape(chord, nacaCode, numPoints = 80) {
     return shape;
 }
 
-// --- 4. Penjanaan Bilah 3D ---
 let bladeMesh;
 const material = new THREE.MeshStandardMaterial({ 
     color: 0x3b82f6, 
@@ -124,7 +114,6 @@ function updateBladeGeometry() {
     const twist = parseFloat(document.getElementById('inpTwist').value) * (Math.PI / 180);
     const sweep = parseFloat(document.getElementById('inpSweep').value) * (Math.PI / 180);
     
-    // Pilih antara fail .dat (jika ada) atau dropdown NACA
     let shapeToExtrude;
     if (customAirfoilPoints && customAirfoilPoints.length > 0) {
         shapeToExtrude = generateCustomShape(rootChord, customAirfoilPoints);
@@ -168,12 +157,38 @@ function updateBladeGeometry() {
     
     bladeMesh = new THREE.Mesh(geometry, material);
     bladeMesh.rotation.x = -Math.PI / 2; 
-    bladeMesh.position.y = span / 2; // Memastikan bilah kekal di atas grid
+    bladeMesh.position.y = span / 2;
     
     scene.add(bladeMesh);
 }
 
-// --- 5. Pendengar Acara (Event Listeners) ---
+// --- FUNGSI EKSPORT STL BAHARU ---
+document.getElementById('btnExportSTL').addEventListener('click', () => {
+    if (!bladeMesh) return;
+    
+    // Inisialisasi pengeksport
+    const exporter = new STLExporter();
+    // Proses mesh 3D menjadi format teks STL (ASCII)
+    const stlString = exporter.parse(scene);
+    
+    // Cipta objek fail (Blob) secara maya
+    const blob = new Blob([stlString], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    
+    // Trik pelayar untuk muat turun automatik
+    const link = document.createElement('a');
+    link.style.display = 'none';
+    link.href = url;
+    link.download = 'Bilah_Turbin_Aero.stl'; // Nama fail lalai
+    document.body.appendChild(link);
+    link.click();
+    
+    // Bersihkan memori
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+});
+
+// --- Pendengar Acara (Event Listeners) ---
 const inputs = ['Span', 'Root', 'Taper', 'Twist', 'Sweep'];
 inputs.forEach(id => {
     const slider = document.getElementById(`inp${id}`);
@@ -184,14 +199,12 @@ inputs.forEach(id => {
     });
 });
 
-// Listener Dropdown (Memadamkan data fail custom jika dipilih)
 document.getElementById('inpNACA').addEventListener('change', () => {
     customAirfoilPoints = null; 
     document.getElementById('inpFile').value = ''; 
     updateBladeGeometry();
 });
 
-// Listener Fail Muat Naik (.dat)
 document.getElementById('inpFile').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -222,7 +235,6 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// --- 6. Gelung Animasi ---
 updateBladeGeometry();
 
 function animate() {
