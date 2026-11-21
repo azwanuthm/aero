@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // --- 1. Persediaan Pemandangan (Scene Setup) ---
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf0f2f5); // Latar belakang kelabu lembut
+scene.background = new THREE.Color(0xf0f2f5); 
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(200, 150, 300);
@@ -29,10 +29,38 @@ scene.add(dirLight);
 const gridHelper = new THREE.GridHelper(400, 40, 0x888888, 0xdddddd);
 scene.add(gridHelper);
 
-// --- 3. Logik Penjanaan Bilah (Geometri Prototaip) ---
+// --- 3. Logik Matematik NACA 4-Digit (00XX) ---
+function generateNACAShape(chord, thicknessRatio, numPoints = 60) {
+    const shape = new THREE.Shape();
+    const points = [];
+    
+    // Kira koordinat permukaan atas
+    for (let i = 0; i <= numPoints; i++) {
+        const x = i / numPoints; // Peratusan kord (0 hingga 1)
+        // Persamaan ketebalan NACA
+        const yt = 5 * thicknessRatio * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * Math.pow(x, 2) + 0.2843 * Math.pow(x, 3) - 0.1015 * Math.pow(x, 4));
+        points.push(new THREE.Vector2(x * chord, yt * chord));
+    }
+    
+    // Kira koordinat permukaan bawah (simetri, undur ke belakang)
+    for (let i = numPoints; i >= 0; i--) {
+        const x = i / numPoints;
+        const yt = 5 * thicknessRatio * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * Math.pow(x, 2) + 0.2843 * Math.pow(x, 3) - 0.1015 * Math.pow(x, 4));
+        points.push(new THREE.Vector2(x * chord, -yt * chord));
+    }
+
+    // Lukis profil 2D
+    shape.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        shape.lineTo(points[i].x, points[i].y);
+    }
+    return shape;
+}
+
+// --- 4. Penjanaan Bilah 3D ---
 let bladeMesh;
 const material = new THREE.MeshStandardMaterial({ 
-    color: 0x3b82f6, // Biru Tailwind
+    color: 0x3b82f6, 
     roughness: 0.4,
     metalness: 0.1,
     side: THREE.DoubleSide
@@ -41,61 +69,66 @@ const material = new THREE.MeshStandardMaterial({
 function updateBladeGeometry() {
     if (bladeMesh) scene.remove(bladeMesh);
 
-    // Ambil nilai dari UI
     const span = parseFloat(document.getElementById('inpSpan').value);
     const rootChord = parseFloat(document.getElementById('inpRoot').value);
     const twist = parseFloat(document.getElementById('inpTwist').value) * (Math.PI / 180);
     const thickness = parseFloat(document.getElementById('inpThick').value) / 100;
 
-    // Untuk prototaip ini, kita bina bilah menggunakan kotak yang diubah suai bentuknya 
-    // (Dalam versi penuh, bahagian ini diganti dengan persamaan titik-titik NACA)
-    const geometry = new THREE.BoxGeometry(rootChord, thickness * 50, span, 10, 2, 10);
+    // 1. Dapatkan Profil NACA 2D
+    const nacaShape = generateNACAShape(rootChord, thickness);
     
-    // Proses mengubah suai bucu geometri (Twist & Taper)
+    // 2. Semperit (Extrude) profil menjadi pepejal 3D sepanjang paksi Z
+    const extrudeSettings = { depth: span, bevelEnabled: false, steps: 30 };
+    const geometry = new THREE.ExtrudeGeometry(nacaShape, extrudeSettings);
+    
+    // 3. Modifikasi Bucu (Taper & Twist)
     const positionAttribute = geometry.attributes.position;
     const vertex = new THREE.Vector3();
+    const pitchAxisX = rootChord * 0.25; // Putaran pada 25% perentas (Aerodynamic Center)
 
     for (let i = 0; i < positionAttribute.count; i++) {
         vertex.fromBufferAttribute(positionAttribute, i);
         
-        // Kira faktor kedudukan sepanjang rentang (z-axis: -span/2 to span/2)
-        const zFactor = (vertex.z + span / 2) / span; // 0 di pangkal, 1 di hujung
+        const zFactor = vertex.z / span; // 0 di pangkal, 1 di hujung
         
-        // A. Taper (Pengecilan hujung)
-        const taperAmount = 1.0 - (zFactor * 0.5); // Hujung menjadi 50% lebih kecil
-        vertex.x *= taperAmount;
-        vertex.y *= taperAmount;
+        // Anjakkan paksi X ke pusat putaran aerodinamik
+        let x = vertex.x - pitchAxisX;
+        let y = vertex.y;
 
-        // B. Twist (Piuhan)
+        // A. Pengecilan Hujung (Taper Ratio 0.5)
+        const taperAmount = 1.0 - (zFactor * 0.5); 
+        x *= taperAmount;
+        y *= taperAmount;
+
+        // B. Piuhan Aerodinamik (Twist)
         const currentTwist = zFactor * twist;
-        const x = vertex.x;
-        const y = vertex.y;
-        vertex.x = x * Math.cos(currentTwist) - y * Math.sin(currentTwist);
-        vertex.y = x * Math.sin(currentTwist) + y * Math.cos(currentTwist);
+        const newX = x * Math.cos(currentTwist) - y * Math.sin(currentTwist);
+        const newY = x * Math.sin(currentTwist) + y * Math.cos(currentTwist);
+
+        // Kembalikan ke kedudukan asal
+        vertex.x = newX + (pitchAxisX * taperAmount); 
+        vertex.y = newY;
 
         positionAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
     }
 
-    geometry.computeVertexNormals(); // Penting untuk pencahayaan licin
-
-    bladeMesh = new THREE.Mesh(geometry, material);
+    geometry.computeVertexNormals();
+    geometry.translate(-pitchAxisX, 0, -span/2); // Pusatkan kedudukan di grid tengah
     
-    // Putar bilah supaya menegak (pilihan paparan)
-    bladeMesh.rotation.x = Math.PI / 2;
-    bladeMesh.position.y = span / 2;
+    bladeMesh = new THREE.Mesh(geometry, material);
+    bladeMesh.rotation.x = -Math.PI / 2; // Tegakkan bilah
     
     scene.add(bladeMesh);
 }
 
-// --- 4. Pendengar Acara UI (Event Listeners) ---
+// --- 5. Pendengar Acara UI (Event Listeners) ---
 const inputs = ['Span', 'Root', 'Twist', 'Thick'];
 inputs.forEach(id => {
     const slider = document.getElementById(`inp${id}`);
     const label = document.getElementById(`val${id}`);
-    
     slider.addEventListener('input', (e) => {
         label.textContent = e.target.value;
-        updateBladeGeometry(); // Bina semula model setiap kali gelangsar bergerak
+        updateBladeGeometry();
     });
 });
 
@@ -107,15 +140,14 @@ document.getElementById('btnReset').addEventListener('click', () => {
     updateBladeGeometry();
 });
 
-// Penyesuaian Saiz Skrin Responsif
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// --- 5. Gelung Animasi (Render Loop) ---
-updateBladeGeometry(); // Jalankan sekali semasa mula
+// --- 6. Gelung Animasi (Render Loop) ---
+updateBladeGeometry();
 
 function animate() {
     requestAnimationFrame(animate);
