@@ -27,30 +27,61 @@ scene.add(dirLight);
 const gridHelper = new THREE.GridHelper(400, 40, 0x888888, 0xdddddd);
 scene.add(gridHelper);
 
-// --- 3. Logik Matematik NACA 4-Digit PENUH (Simetri & Tak Simetri) ---
+// --- Pemboleh Ubah Global Untuk Data Luaran ---
+let customAirfoilPoints = null;
+
+// --- 3.1 Fungsi Pembaca Fail Data Luaran ---
+function parseDatFile(content) {
+    const lines = content.split('\n');
+    const points = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.match(/^[a-zA-Z]/)) continue; // Abaikan baris kosong atau tajuk huruf
+        
+        const parts = line.split(/\s+/); // Pisahkan nombor menggunakan ruang putih
+        if (parts.length >= 2) {
+            const x = parseFloat(parts[0]);
+            const y = parseFloat(parts[1]);
+            if (!isNaN(x) && !isNaN(y)) {
+                points.push(new THREE.Vector2(x, y));
+            }
+        }
+    }
+    return points;
+}
+
+function generateCustomShape(chord, pointsArray) {
+    const shape = new THREE.Shape();
+    if (pointsArray.length === 0) return shape;
+    
+    shape.moveTo(pointsArray[0].x * chord, pointsArray[0].y * chord);
+    for (let i = 1; i < pointsArray.length; i++) {
+        shape.lineTo(pointsArray[i].x * chord, pointsArray[i].y * chord);
+    }
+    // Tutup profil geometri
+    shape.lineTo(pointsArray[0].x * chord, pointsArray[0].y * chord);
+    return shape;
+}
+
+// --- 3.2 Logik Matematik NACA 4-Digit PENUH ---
 function generateNACAShape(chord, nacaCode, numPoints = 80) {
     const shape = new THREE.Shape();
-    
-    // Urai 4 Digit (Contoh: "4412")
-    const m = parseInt(nacaCode.charAt(0)) / 100;         // Kamber maksimum
-    const p = parseInt(nacaCode.charAt(1)) / 10;          // Posisi kamber
-    const t = parseInt(nacaCode.substring(2, 4)) / 100;   // Ketebalan maksimum
+    const m = parseInt(nacaCode.charAt(0)) / 100;
+    const p = parseInt(nacaCode.charAt(1)) / 10;
+    const t = parseInt(nacaCode.substring(2, 4)) / 100;
 
     const upperPoints = [];
     const lowerPoints = [];
 
-    // Pengiraan profil menggunakan taburan Kosinus untuk resolusi bucu yang lebih licin
     for (let i = 0; i <= numPoints; i++) {
         const beta = (i / numPoints) * Math.PI;
-        const x = (1 - Math.cos(beta)) / 2; // Nilai x dari 0 (muncung) ke 1 (ekor)
+        const x = (1 - Math.cos(beta)) / 2; 
 
-        // Persamaan Ketebalan
         const yt = 5 * t * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * Math.pow(x, 2) + 0.2843 * Math.pow(x, 3) - 0.1015 * Math.pow(x, 4));
-
         let yc = 0;
         let dyc_dx = 0;
 
-        // Persamaan Kamber (Jika bukan simetri)
         if (p > 0) {
             if (x < p) {
                 yc = (m / Math.pow(p, 2)) * (2 * p * x - Math.pow(x, 2));
@@ -62,28 +93,16 @@ function generateNACAShape(chord, nacaCode, numPoints = 80) {
         }
 
         const theta = Math.atan(dyc_dx);
-
-        // Titik permukaan atas dan bawah
-        const xu = x - yt * Math.sin(theta);
-        const yu = yc + yt * Math.cos(theta);
-        const xl = x + yt * Math.sin(theta);
-        const yl = yc - yt * Math.cos(theta);
-
-        upperPoints.push(new THREE.Vector2(xu * chord, yu * chord));
-        lowerPoints.push(new THREE.Vector2(xl * chord, yl * chord));
+        upperPoints.push(new THREE.Vector2((x - yt * Math.sin(theta)) * chord, (yc + yt * Math.cos(theta)) * chord));
+        lowerPoints.push(new THREE.Vector2((x + yt * Math.sin(theta)) * chord, (yc - yt * Math.cos(theta)) * chord));
     }
 
-    // Susun titik untuk membentuk 1 pusingan tertutup yang sempurna (Ekor -> Muncung -> Ekor)
     const points = [];
     for (let i = numPoints; i >= 0; i--) points.push(upperPoints[i]);
     for (let i = 1; i <= numPoints; i++) points.push(lowerPoints[i]);
 
-    // Lukis 2D Vector
     shape.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-        shape.lineTo(points[i].x, points[i].y);
-    }
-    
+    for (let i = 1; i < points.length; i++) shape.lineTo(points[i].x, points[i].y);
     return shape;
 }
 
@@ -104,11 +123,18 @@ function updateBladeGeometry() {
     const taperTarget = parseFloat(document.getElementById('inpTaper').value);
     const twist = parseFloat(document.getElementById('inpTwist').value) * (Math.PI / 180);
     const sweep = parseFloat(document.getElementById('inpSweep').value) * (Math.PI / 180);
-    const nacaCode = document.getElementById('inpNACA').value; // Ambil nilai dropdown
+    
+    // Pilih antara fail .dat (jika ada) atau dropdown NACA
+    let shapeToExtrude;
+    if (customAirfoilPoints && customAirfoilPoints.length > 0) {
+        shapeToExtrude = generateCustomShape(rootChord, customAirfoilPoints);
+    } else {
+        const nacaCode = document.getElementById('inpNACA').value;
+        shapeToExtrude = generateNACAShape(rootChord, nacaCode);
+    }
 
-    const nacaShape = generateNACAShape(rootChord, nacaCode);
     const extrudeSettings = { depth: span, bevelEnabled: false, steps: 80 };
-    const geometry = new THREE.ExtrudeGeometry(nacaShape, extrudeSettings);
+    const geometry = new THREE.ExtrudeGeometry(shapeToExtrude, extrudeSettings);
     
     const positionAttribute = geometry.attributes.position;
     const vertex = new THREE.Vector3();
@@ -142,7 +168,7 @@ function updateBladeGeometry() {
     
     bladeMesh = new THREE.Mesh(geometry, material);
     bladeMesh.rotation.x = -Math.PI / 2; 
-    bladeMesh.position.y = span / 2;
+    bladeMesh.position.y = span / 2; // Memastikan bilah kekal di atas grid
     
     scene.add(bladeMesh);
 }
@@ -158,8 +184,24 @@ inputs.forEach(id => {
     });
 });
 
-// Listener untuk Dropdown NACA
-document.getElementById('inpNACA').addEventListener('change', updateBladeGeometry);
+// Listener Dropdown (Memadamkan data fail custom jika dipilih)
+document.getElementById('inpNACA').addEventListener('change', () => {
+    customAirfoilPoints = null; 
+    document.getElementById('inpFile').value = ''; 
+    updateBladeGeometry();
+});
+
+// Listener Fail Muat Naik (.dat)
+document.getElementById('inpFile').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        customAirfoilPoints = parseDatFile(event.target.result);
+        updateBladeGeometry();
+    };
+    reader.readAsText(file);
+});
 
 document.getElementById('btnReset').addEventListener('click', () => {
     document.getElementById('inpSpan').value = 150; document.getElementById('valSpan').textContent = 150;
@@ -167,7 +209,10 @@ document.getElementById('btnReset').addEventListener('click', () => {
     document.getElementById('inpTaper').value = 0.5; document.getElementById('valTaper').textContent = 0.5;
     document.getElementById('inpTwist').value = 15; document.getElementById('valTwist').textContent = 15;
     document.getElementById('inpSweep').value = 0;  document.getElementById('valSweep').textContent = 0;
-    document.getElementById('inpNACA').value = "4412"; // Reset kepada profil 4412
+    document.getElementById('inpNACA').value = "4412"; 
+    
+    customAirfoilPoints = null; 
+    document.getElementById('inpFile').value = ''; 
     updateBladeGeometry();
 });
 
