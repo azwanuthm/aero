@@ -69,34 +69,35 @@ const material = new THREE.MeshStandardMaterial({
 function updateBladeGeometry() {
     if (bladeMesh) scene.remove(bladeMesh);
 
+    // Ambil nilai baharu dari UI
     const span = parseFloat(document.getElementById('inpSpan').value);
     const rootChord = parseFloat(document.getElementById('inpRoot').value);
+    const taperTarget = parseFloat(document.getElementById('inpTaper').value); // Nilai baharu
     const twist = parseFloat(document.getElementById('inpTwist').value) * (Math.PI / 180);
+    const sweep = parseFloat(document.getElementById('inpSweep').value) * (Math.PI / 180); // Nilai baharu
     const thickness = parseFloat(document.getElementById('inpThick').value) / 100;
 
-    // 1. Dapatkan Profil NACA 2D
     const nacaShape = generateNACAShape(rootChord, thickness);
     
-    // 2. Semperit (Extrude) profil menjadi pepejal 3D sepanjang paksi Z
-    const extrudeSettings = { depth: span, bevelEnabled: false, steps: 30 };
+    // Guna bilangan segmen (steps) yang lebih tinggi untuk bentuk piuh yang lebih licin
+    const extrudeSettings = { depth: span, bevelEnabled: false, steps: 60 };
     const geometry = new THREE.ExtrudeGeometry(nacaShape, extrudeSettings);
     
-    // 3. Modifikasi Bucu (Taper & Twist)
     const positionAttribute = geometry.attributes.position;
     const vertex = new THREE.Vector3();
-    const pitchAxisX = rootChord * 0.25; // Putaran pada 25% perentas (Aerodynamic Center)
+    const pitchAxisX = rootChord * 0.25; 
 
     for (let i = 0; i < positionAttribute.count; i++) {
         vertex.fromBufferAttribute(positionAttribute, i);
         
-        const zFactor = vertex.z / span; // 0 di pangkal, 1 di hujung
+        const zFactor = vertex.z / span; 
         
-        // Anjakkan paksi X ke pusat putaran aerodinamik
         let x = vertex.x - pitchAxisX;
         let y = vertex.y;
 
-        // A. Pengecilan Hujung (Taper Ratio 0.5)
-        const taperAmount = 1.0 - (zFactor * 0.5); 
+        // A. Pengecilan Hujung (Taper) berdasarkan gelangsar (UI)
+        // Jika UI taper=1, taperAmount=1. Jika UI taper=0.2, taperAmount=0.2 di hujung.
+        const taperAmount = 1.0 - (zFactor * (1.0 - taperTarget)); 
         x *= taperAmount;
         y *= taperAmount;
 
@@ -105,24 +106,29 @@ function updateBladeGeometry() {
         const newX = x * Math.cos(currentTwist) - y * Math.sin(currentTwist);
         const newY = x * Math.sin(currentTwist) + y * Math.cos(currentTwist);
 
-        // Kembalikan ke kedudukan asal
-        vertex.x = newX + (pitchAxisX * taperAmount); 
+        // C. Sudut Sapuan (Sweep)
+        // Menganjakkan kedudukan X ke belakang berdasarkan paksi Z
+        const sweepOffset = Math.tan(sweep) * vertex.z;
+
+        // Kembalikan ke kedudukan asal dengan tambahan sweep offset
+        vertex.x = newX + (pitchAxisX * taperAmount) - sweepOffset; 
         vertex.y = newY;
 
         positionAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
     }
 
     geometry.computeVertexNormals();
-    geometry.translate(-pitchAxisX, 0, -span/2); // Pusatkan kedudukan di grid tengah
+    geometry.translate(-pitchAxisX, 0, -span/2); 
     
     bladeMesh = new THREE.Mesh(geometry, material);
-    bladeMesh.rotation.x = -Math.PI / 2; // Tegakkan bilah
+    bladeMesh.rotation.x = -Math.PI / 2; 
     
     scene.add(bladeMesh);
 }
 
 // --- 5. Pendengar Acara UI (Event Listeners) ---
-const inputs = ['Span', 'Root', 'Twist', 'Thick'];
+// Kemas kini array inputs untuk memasukkan Taper dan Sweep
+const inputs = ['Span', 'Root', 'Taper', 'Twist', 'Sweep', 'Thick'];
 inputs.forEach(id => {
     const slider = document.getElementById(`inp${id}`);
     const label = document.getElementById(`val${id}`);
@@ -135,16 +141,13 @@ inputs.forEach(id => {
 document.getElementById('btnReset').addEventListener('click', () => {
     document.getElementById('inpSpan').value = 150; document.getElementById('valSpan').textContent = 150;
     document.getElementById('inpRoot').value = 40;  document.getElementById('valRoot').textContent = 40;
+    document.getElementById('inpTaper').value = 0.5; document.getElementById('valTaper').textContent = 0.5; // Reset baharu
     document.getElementById('inpTwist').value = 15; document.getElementById('valTwist').textContent = 15;
+    document.getElementById('inpSweep').value = 0; document.getElementById('valSweep').textContent = 0; // Reset baharu
     document.getElementById('inpThick').value = 12; document.getElementById('valThick').textContent = 12;
     updateBladeGeometry();
 });
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
+// (Biarkan bahagian Resize dan Render Loop kekal sama)
 
 // --- 6. Gelung Animasi (Render Loop) ---
 updateBladeGeometry();
