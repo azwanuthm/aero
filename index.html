@@ -48,16 +48,20 @@
             </select>
         </div>
         
-        <!-- Modul Muat Naik Fail .dat Baharu -->
         <div class="mb-6 border-t pt-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-2">Muat Naik Koordinat (.dat / .txt)</h2>
             <input type="file" id="inpFile" accept=".dat,.txt" class="w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"/>
-            <p class="text-[10px] text-gray-500 mt-1 italic">*Membatalkan fungsi dropdown NACA jika fail dimasukkan.</p>
         </div>
         
-        <button id="btnReset" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded text-sm transition shadow-sm">
-            Tetapkan Semula
-        </button>
+        <!-- Butang Tindakan -->
+        <div class="flex flex-col gap-2 border-t pt-4">
+            <button id="btnExportSTL" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded text-sm transition shadow-sm">
+                Muat Turun Fail STL
+            </button>
+            <button id="btnReset" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded text-sm transition shadow-sm">
+                Tetapkan Semula
+            </button>
+        </div>
     </div>
 
     <div id="canvas-container"></div>
