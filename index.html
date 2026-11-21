@@ -4,20 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Konfigurator Bilah Turbin 3D</title>
-    <!-- Tailwind CSS (via CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; font-family: sans-serif; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        
+        /* Gaya khusus untuk scrollbar panel UI supaya kemas */
+        .panel-scroll::-webkit-scrollbar { width: 6px; }
+        .panel-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800">
 
     <!-- Panel UI (Sidebar) -->
-    <div class="absolute top-4 left-4 bg-white p-6 rounded-lg shadow-lg w-80 z-10">
+    <div class="absolute top-4 left-4 bg-white p-6 rounded-lg shadow-lg w-80 z-10 max-h-[95vh] overflow-y-auto panel-scroll">
         <h1 class="text-xl font-bold mb-4 text-blue-600 border-b pb-2">Parameter Turbin</h1>
 
-<!-- Geometri Asas -->
+        <!-- Geometri Asas -->
         <div class="mb-4">
             <h2 class="text-sm font-semibold text-gray-700 mb-2">Dimensi (mm) & Skala</h2>
             <label class="block text-xs mb-1">Panjang Rentang (Span): <span id="valSpan">150</span></label>
@@ -28,7 +31,7 @@
 
             <label class="block text-xs mb-1">Nisbah Tirus (Taper Ratio): <span id="valTaper">0.5</span></label>
             <input type="range" id="inpTaper" min="0.1" max="1.0" step="0.05" value="0.5" class="w-full">
-            <p class="text-[10px] text-gray-500 mt-1 mb-2 italic">*Nilai 1.0 bermakna tiada pengecilan di hujung.</p>
+            <p class="text-[10px] text-gray-500 mt-1 mb-2 italic">*Nilai 1.0 = tiada pengecilan hujung.</p>
         </div>
 
         <!-- Aerodinamik -->
@@ -41,10 +44,22 @@
             <input type="range" id="inpSweep" min="-20" max="45" value="0" class="w-full">
         </div>
 
+        <!-- Profil NACA -->
+        <div class="mb-6">
+            <h2 class="text-sm font-semibold text-gray-700 mb-2">Profil NACA</h2>
+            <label class="block text-xs mb-1">Ketebalan Maksimum (%): <span id="valThick">12</span></label>
+            <input type="range" id="inpThick" min="5" max="30" value="12" class="w-full">
+            <p class="text-[10px] text-gray-500 mt-1 italic">*Mengawal ketebalan bilah (contoh: siri 0012)</p>
+        </div>
+        
+        <button id="btnReset" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded text-sm transition shadow-sm">
+            Tetapkan Semula
+        </button>
+    </div>
+
     <!-- Kanvas Pemaparan 3D -->
     <div id="canvas-container"></div>
 
-    <!-- Pemuatan Three.js (via CDN) -->
     <script type="importmap">
         {
             "imports": {
@@ -53,8 +68,6 @@
             }
         }
     </script>
-    
-    <!-- Logik Aplikasi -->
     <script type="module" src="./app.js"></script>
 
 </body>
